@@ -2,33 +2,29 @@ package com.maskaravivek.provepassiveidentityandroiddemo
 
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import android.view.View
+import android.widget.Button
+import android.widget.ProgressBar
+import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.textfield.TextInputEditText
 import com.maskaravivek.provepassiveidentityandroiddemo.model.VerificationResult
 import com.maskaravivek.provepassiveidentityandroiddemo.model.VerifyResponse
 import com.maskaravivek.provepassiveidentityandroiddemo.ui.ResponseHandlers
-import com.maskaravivek.provepassiveidentityandroiddemo.ui.theme.ProvePassiveIdentityAndroidDemoTheme
 
-class MainActivity : ComponentActivity(), ProveIntegration.ProveIntegrationCallback {
+class MainActivity : AppCompatActivity(), ProveIntegration.ProveIntegrationCallback {
     
     private lateinit var proveIntegration: ProveIntegration
     private val tag = "MainActivity"
+    
+    private lateinit var phoneEditText: TextInputEditText
+    private lateinit var verifyButton: Button
+    private lateinit var statusText: TextView
+    private lateinit var progressBar: ProgressBar
+    private lateinit var resultsContainer: View
+    private lateinit var resultTitle: TextView
+    private lateinit var resultDetails: TextView
     
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -45,6 +41,7 @@ class MainActivity : ComponentActivity(), ProveIntegration.ProveIntegrationCallb
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
         
         // Initialize Prove Integration
         proveIntegration = ProveIntegration(
@@ -52,134 +49,70 @@ class MainActivity : ComponentActivity(), ProveIntegration.ProveIntegrationCallb
             backendBaseUrl = "https://your-backend-url.com/"
         )
         
-        setContent {
-            ProvePassiveIdentityAndroidDemoTheme {
-                ProveVerificationScreen()
+        // Initialize UI components
+        initializeViews()
+        setupClickListeners()
+        updatePermissionUI()
+    }
+    
+    private fun initializeViews() {
+        phoneEditText = findViewById(R.id.phoneEditText)
+        verifyButton = findViewById(R.id.verifyButton)
+        statusText = findViewById(R.id.statusText)
+        progressBar = findViewById(R.id.progressBar)
+        resultsContainer = findViewById(R.id.resultsContainer)
+        resultTitle = findViewById(R.id.resultTitle)
+        resultDetails = findViewById(R.id.resultDetails)
+    }
+    
+    private fun setupClickListeners() {
+        verifyButton.setOnClickListener {
+            val phoneNumber = phoneEditText.text?.toString()?.trim() ?: ""
+            
+            if (phoneNumber.isEmpty()) {
+                showStatus("Please enter a phone number")
+                return@setOnClickListener
+            }
+            
+            val hasPermission = PermissionUtils.hasPhoneStatePermission(this)
+            if (hasPermission) {
+                startVerification(phoneNumber)
+                showLoading(true)
+                showStatus("🔍 Verifying your identity...")
+                hideResults()
+            } else {
+                requestPhonePermission()
             }
         }
     }
     
-    @Composable
-    fun ProveVerificationScreen() {
-        var phoneNumber by remember { mutableStateOf("") }
-        var isLoading by remember { mutableStateOf(false) }
-        var statusText by remember { mutableStateOf("") }
-        var showResults by remember { mutableStateOf(false) }
-        var resultTitle by remember { mutableStateOf("") }
-        var resultDetails by remember { mutableStateOf("") }
-        var hasPermission by remember { mutableStateOf(PermissionUtils.hasPhoneStatePermission(this@MainActivity)) }
-        
-        val context = LocalContext.current
-        
-        LaunchedEffect(Unit) {
-            hasPermission = PermissionUtils.hasPhoneStatePermission(context)
-        }
-        
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "Prove Passive Identity Demo",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 32.dp)
-            )
-            
-            Text(
-                text = "Enter your phone number to verify your identity instantly using Prove's passive verification.",
-                fontSize = 16.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-            
-            OutlinedTextField(
-                value = phoneNumber,
-                onValueChange = { phoneNumber = it },
-                label = { Text("Phone Number") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                enabled = !isLoading
-            )
-            
-            Button(
-                onClick = {
-                    if (phoneNumber.trim().isEmpty()) {
-                        statusText = "Please enter a phone number"
-                        return@Button
-                    }
-                    
-                    if (hasPermission) {
-                        startVerification(phoneNumber.trim())
-                        isLoading = true
-                        statusText = "🔍 Verifying your identity..."
-                        showResults = false
-                    } else {
-                        requestPhonePermission()
-                    }
-                },
-                enabled = !isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp)
-            ) {
-                Text("Verify Identity", fontSize = 16.sp)
-            }
-            
-            if (!hasPermission) {
-                Text(
-                    text = "⚠️ Phone permission required for passive verification",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-            }
-            
-            if (statusText.isNotEmpty()) {
-                Text(
-                    text = statusText,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-            }
-            
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.padding(top = 16.dp)
-                )
-            }
-            
-            if (showResults) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 24.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = resultTitle,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(bottom = 16.dp)
-                        )
-                        Text(
-                            text = resultDetails,
-                            fontSize = 14.sp,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
-                }
-            }
-        }
+    private fun updatePermissionUI() {
+        val hasPermission = PermissionUtils.hasPhoneStatePermission(this)
+        // You can add a permission warning TextView to the layout if needed
     }
+    
+    private fun showLoading(loading: Boolean) {
+        progressBar.visibility = if (loading) View.VISIBLE else View.GONE
+        verifyButton.isEnabled = !loading
+        phoneEditText.isEnabled = !loading
+    }
+    
+    private fun showStatus(message: String) {
+        statusText.text = message
+        statusText.visibility = View.VISIBLE
+    }
+    
+    private fun hideResults() {
+        resultsContainer.visibility = View.GONE
+    }
+    
+    private fun showResults(title: String, details: String) {
+        resultTitle.text = title
+        resultDetails.text = details
+        resultsContainer.visibility = View.VISIBLE
+        showLoading(false)
+    }
+    
     
     private fun requestPhonePermission() {
         if (PermissionUtils.shouldShowRationale(this)) {
@@ -207,39 +140,22 @@ class MainActivity : ComponentActivity(), ProveIntegration.ProveIntegrationCallb
     // ProveIntegration.ProveIntegrationCallback implementations
     override fun onVerificationSuccess(response: VerifyResponse) {
         Log.d(tag, "Verification successful: $response")
-        ResponseHandlers.handleVerificationSuccess(
-            context = this,
-            response = response,
-            onSuccessConfirmed = { 
-                ResponseHandlers.showToast(this, "Identity verified successfully!")
-            }
-        )
+        showResults("✅ Verification Successful", response.toString())
+        ResponseHandlers.showToast(this, "Identity verified successfully!")
     }
     
     override fun onVerificationFailure(error: String, result: VerificationResult) {
         Log.d(tag, "Verification failed: $error, result: $result")
-        ResponseHandlers.handleVerificationFailure(
-            context = this,
-            error = error,
-            result = result,
-            onRetry = { },
-            onFallback = { }
-        )
+        showLoading(false)
+        showStatus("❌ Verification failed: $error")
+        showResults("❌ Verification Failed", "Error: $error\nResult: $result")
     }
     
     override fun onFallbackRequired() {
         Log.d(tag, "Fallback verification required")
-        ResponseHandlers.handleFallbackRequired(
-            context = this,
-            phoneNumber = "",
-            onSmsRequested = {
-                ResponseHandlers.showToast(this, "SMS verification requested")
-            },
-            onCallRequested = {
-                ResponseHandlers.showToast(this, "Call verification requested")
-            },
-            onCancel = { }
-        )
+        showLoading(false)
+        showStatus("⚠️ Fallback verification required")
+        ResponseHandlers.showToast(this, "Fallback verification required")
     }
     
     override fun onDestroy() {
